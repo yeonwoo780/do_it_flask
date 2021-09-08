@@ -741,3 +741,199 @@ Question 모델과 Answer 모델은 현재 연결된 상태이고, Answer 모델
 이제 플라스크 셸을 종료하자.
 
 > 플라스크 셸에서 빠져 나오려면 `<Ctrl+Z>`를 누르고 `<Enter>`를 입력한다.
+
+
+
+### 05 질문 목록과 질문 상세 기능 만들기
+
+#### 질문 목록 기능 만들기
+
+[1] 게시판 질문 목록 출력하기
+
+myproject/pybo/views/main_views.py
+
+```
+from flask import Blueprint, render_template # 추가
+
+from pybo.models import Question # 추가
+
+(...생략...)
+
+@bp.route('/')
+def index():
+    question_list = Question.query.order_by(Question.create_date.desc())# 추가
+    return render_template('question/question_list.html', question_list=question_list)# 추가
+```
+
+<br><br>
+
+
+
+[2] 질문 목록 템플릿 파일 작성하기
+
+render_template 함수에서 사용할 `question/question_list.html` 템플릿 파일을 작성
+
+<br>
+
+<br>
+
+
+
+#### 질문 상세 기능 만들기
+
+[1] 라우트 함수 구현하기
+
+myproject/pybo/views/main_views.py
+
+```
+(...생략...)
+
+@bp.route('/detail/<int:question_id>/')
+def detail(question_id):
+    question = Question.query.get(question_id)
+    return render_template('question/question_detail.html', question=question)
+```
+
+<br><br>
+
+
+
+[2] 질문 상세 템플릿 작성하기
+
+이어서 질문 상세 화면에 해당하는 `question/question_detail.html` 템플릿을 작성하자. `templates/question` 디렉터리에 question_detail.html 파일을 만들고 다음 코드를 작성하자.
+
+templates/question/question_detail.html
+
+```
+<h1>{{ question.subject }}</h1>
+
+<div>
+    {{ question.content }}
+</div>
+```
+
+<br><br>
+
+
+
+[3] 404 오류 페이지 표시하기
+
+이번에는 웹 브라우저에서 `localhost:5000/detail/30/` 페이지를 요청해 보자. 그러면 빈 페이지가 나타날 것이다. 왜냐하면 앱이 전달받은 question_id가 30이므로 main_views.py 파일의 detail 함수에서 `Question.query.get(30)`이 호출되는데 question_id가 30인 질문은 없기 때문
+
+<br><br>
+
+그런데 이처럼 잘못된 URL을 요청받을 때 단순히 빈 페이지를 표시하면 안된다. 이때는 보통 "Not Found (404)"처럼 오류 페이지를 표시해야 한다. 404는 HTTP 주요 응답 코드의 하나이다. 아래 표에서 HTTP 주요 응답 코드의 종류를 확인하자.
+
+<br><br>
+
+존재하지 않는 페이지를 요청받으면 빈 페이지 대신 404 오류 페이지를 표시하도록 다음처럼 detail 함수의 일부를 수정해 보자.
+
+myproject/pybo/views/main_views.py
+
+```
+(...생략...)
+
+@bp.route('/detail/<int:question_id>/')
+def detail(question_id): 
+    question = Question.query.get_or_404(question_id) # 변경
+    return render_template('question/question_detail.html', question=question)
+```
+
+<br><br>
+
+#### 블루프린트로 기능 분리하기
+
+[1] 질문 목록, 질문 상세 기능 분리하기
+
+`pybo/views` 디렉터리에 question_views.py 파일을 새로 만들고 질문 목록과 질문 상세 기능을 이동해 보자.
+
+pybo/views/question_views.py
+
+```
+from flask import Blueprint, render_template
+
+from pybo.models import Question
+
+bp = Blueprint('question', __name__, url_prefix='/question')
+
+
+@bp.route('/list/')
+def _list():
+    question_list = Question.query.order_by(Question.create_date.desc())
+    return render_template('question/question_list.html', question_list=question_list)
+
+
+@bp.route('/detail/<int:question_id>/')
+def detail(question_id):
+    question = Question.query.get_or_404(question_id)
+    return render_template('question/question_detail.html', question=question) 
+```
+
+<br><br>
+
+이제 question_views.py 파일에 등록한 블루프린트를 적용하기 위해 `pybo/__init__.py` 파일도 수정하자.
+
+pybo/__init__.py
+
+```
+(...생략...)
+
+def create_app():
+    (...생략...)
+
+    # 블루프린트
+    from .views import main_views, question_views # 추가
+    app.register_blueprint(main_views.bp)
+    app.register_blueprint(question_views.bp) # 추가
+
+    (...생략...)
+```
+
+<br><br>
+
+[2] url_for로 리다이렉트 기능 추가하기
+
+question_views.py 파일에 질문 목록과 질문 상세 기능을 구현했으므로 main_views.py 파일에서는 해당 기능을 제거하자.
+
+views/main_views.py
+
+```
+
+from flask import Blueprint, url_for
+from werkzeug.utils import redirect
+
+bp = Blueprint('main', __name__, url_prefix='/')
+
+
+@bp.route('/hello')
+def hello_pybo():
+    return 'Hello, Pybo!'
+
+
+@bp.route('/')
+def index():
+    return redirect(url_for('question._list'))
+```
+
+`localhost:5000`에 접속하면 리다이렉트 기능 덕분에 자동으로 `localhost:5000/question/list/` 페이지가 호출될 것이다. 확인해 보자.
+
+<br><br>
+
+[3] 하드 코딩된 URL에 url_for 함수 이용하기
+
+앞서 url_for 함수를 이용하면 라우트가 설정된 함수명으로 URL을 찾아준다고 했다. 이 기능을 이용해 질문 목록 템플릿에서 질문 상세를 호출하는 코드도 url_for를 이용해 수정
+
+templates/question/question_list.html
+
+```
+{% if question_list %}
+    <ul>
+    {% for question in question_list %}
+        <li><a href="{{ url_for('question.detail', question_id=question.id) }}">{{ question.subject }}</a></li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>질문이 없습니다.</p>
+{% endif %}
+```
+
